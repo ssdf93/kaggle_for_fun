@@ -43,36 +43,70 @@ def birthAge(x):
     elif 'year' in x:
         return int(sts[0])+50
     else:
-        return None
+        return 0
+
+def get_date(st,date_type):
+    if date_type=='year':
+        return int(st[:4])
+    elif date_type=='month':
+        return int(st[5:7])
+    elif date_type=='day':
+        return int(st[8:10])
+    elif date_type=='hour':
+        return int(st[11:13])
+    else:
+        return 0
+
+def get_period(x):
+    if x>=7 and x<12:
+        return "Morning"
+    elif x>=12 and x<15:
+        return "Noon"
+    elif x>15 and x<20:
+        return "AfterNoon"
+    elif x>=20 and x<24:
+        return "Night"
+    else:
+        return "MidNight"
 
 
 def data_processing(train,test):
-    features=[]
+    features=['Color','SexuponOutcome','AnimalType','Breed']
     for data in [train,test]:
         data['AgeuponOutcome']=data['AgeuponOutcome'].fillna('Unknown')
-        data['birthAge']=data['AgeuponOutcome'].apply(lambda x: birthAge(x))
+        data['BirthAge']=data['AgeuponOutcome'].apply(lambda x: birthAge(x))
+        data['Month']=data['DateTime'].apply(lambda x: get_date(x,'month'))
+        data['Year']=data['DateTime'].apply(lambda x: get_date(x,'year'))
+        data['Hour']=data['DateTime'].apply(lambda x: get_date(x,'hour'))
+        data['Day']=data['DateTime'].apply(lambda x: get_date(x,'day'))
+        data['Period']=data['Hour'].apply(lambda x: get_period(x))
 
+
+    features+=['BirthAge','Year','Month','Day','Hour','Period']
+
+    print("Label Encoder",time.ctime())
+    le=LabelEncoder()
+    for col in features:
+        train[col]=train[col].fillna('Unknown')
+        test[col]=test[col].fillna('Unknown')
+        le.fit(list(train[col])+list(test[col]))
+        train[col]=le.transform(train[col])
+        test[col]=le.transform(test[col])
+
+    le.fit(list(train[target]))
+    train[target]=le.transform(train[target])
+
+    print("Standard Scalaer",time.ctime())
+    scaler=StandardScaler()
+    for col in features:
+        scaler.fit(list(train[col])+list(test[col]))
+        train[col]=scaler.transform(train[col])
+        test[col]=scaler.transform(test[col])
 
     # print(data['birthAge'][:10])
 
 
     return train,test,features
-
-def XG_boost(train,test,features):
-    params = {'max_depth':8, 'eta':0.05, 'silent':1,
-              'objective':'multi:softprob', 'num_class':39, 'eval_metric':'mlogloss',
-              'min_child_weight':3, 'subsample':0.6,'colsample_bytree':0.6, 'nthread':4}
-    num_rounds = 250
-
-
-    print("Start Training",time.ctime())
-    xgbtrain = xgb.DMatrix(train[features], label=train[target])
-    classifier = xgb.train(params, xgbtrain, num_rounds)
-    print("Start Predicting",time.ctime())
-    dtest=xgb.DMatrix(test[features])
-    ans=classifier.predict(dtest)
-
-
 
 
 def write_csv(file_name,ans,first_row=None,myId=None):
@@ -90,10 +124,11 @@ def write_csv(file_name,ans,first_row=None,myId=None):
 
         for i in range(ansSize):
             # import pdb;pdb.set_trace()
-            predictions += [list(myId[i])+ans[i].tolist()]
-            if i%50000==0:
+            predictions += [[myId[i]]+ans[i].tolist()]
+            if (i+1)%50000==0:
                 writer.writerows(predictions)
                 predictions=[]
+
         if predictions != None:
             writer.writerows(predictions)
 
@@ -111,6 +146,30 @@ def write_csv(file_name,ans,first_row=None,myId=None):
     # df.to_csv('result/importance.csv',index=False)
 
 
+
+def XG_boost(train,test,features):
+    params = {'max_depth':8, 'eta':0.05, 'silent':1,
+              'objective':'multi:softprob', 'num_class':5, 'eval_metric':'mlogloss',
+              'min_child_weight':3, 'subsample':0.6,'colsample_bytree':0.6, 'nthread':4}
+    num_rounds = 250
+
+
+    print("Start Training",time.ctime())
+    xgbtrain = xgb.DMatrix(train[features], label=train[target])
+    classifier = xgb.train(params, xgbtrain, num_rounds)
+    print("Start Predicting",time.ctime())
+    dtest=xgb.DMatrix(test[features])
+    ans=classifier.predict(dtest)
+    first_row="ID,Adoption,Died,Euthanasia,Return_to_owner,Transfer"
+    myId=list(range(ans.shape[0]))
+    write_csv('results/xgboost-feature-submit.csv',ans,first_row,myId)
+
+
+
+
+
+
 if __name__ == '__main__':
     train,test=load_data()
     train,test,features=data_processing(train,test)
+    XG_boost(train,test,features)
