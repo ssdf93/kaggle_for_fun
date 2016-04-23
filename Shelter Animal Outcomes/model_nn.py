@@ -147,7 +147,7 @@ def write_csv(file_name,ans,first_row=None,myId=None):
 
 
 
-def XG_boost(train,test,features):
+def neural_networks(train,test,features):
     params = {'max_depth':8, 'eta':0.05,'silent':1,
               'objective':'multi:softprob', 'num_class':5, 'eval_metric':'mlogloss',
               'min_child_weight':3, 'subsample':0.6,'colsample_bytree':0.6, 'nthread':4}
@@ -173,4 +173,4 @@ def XG_boost(train,test,features):
 if __name__ == '__main__':
     train,test=load_data()
     train,test,features=data_processing(train,test)
-    XG_boost(train,test,features)
+    neural_networks(train,test,features)

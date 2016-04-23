@@ -82,6 +82,8 @@ def embedding_methods(train_features,test_features,train_y,train,test):
     model.add(Embedding(dicSize, length, dropout=0.5,input_length=maxlen,mask_zero=True,weights=[embedding]))
     model.add(LSTM(length*2, dropout_W=0.5, dropout_U=0.1))
     model.add(Dropout(0.3))
+    model.add(LSTM(length, dropout_W=0.5, dropout_U=0.1))
+    model.add(Dropout(0.3))
     model.add(Dense(200))
     model.add(PReLU())
     model.add(Dropout(0.5))
