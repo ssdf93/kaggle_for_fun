@@ -14,10 +14,11 @@ from gensim.models.doc2vec import Doc2Vec
 from keras.preprocessing import sequence
 from keras.utils import np_utils
 from keras.models import Sequential
-from keras.layers.core import Dense, Dropout, Activation
+from keras.layers.core import Dense, Dropout, Activation, Flatten
 from keras.layers.embeddings import Embedding
 from keras.layers.advanced_activations import PReLU
 from keras.layers.recurrent import LSTM
+from keras.layers.convolutional import Convolution1D, MaxPooling1D
 
 
 IS_SAMPLE=False
@@ -79,9 +80,15 @@ def embedding_methods(train_features,test_features,train_y,train,test):
     print('Build model...')
     model = Sequential()
     print(dicSize,length,embedding.shape)
-    model.add(Embedding(dicSize, length, dropout=0.5,input_length=maxlen,mask_zero=True,weights=[embedding]))
-    model.add(LSTM(length*2, dropout_W=0.5, dropout_U=0.1))
-    model.add(Dropout(0.3))
+    model.add(Embedding(dicSize, length, dropout=0.5,input_length=maxlen,weights=[embedding]))
+
+    nb_filter = 250
+    filter_length = 3
+    model.add(Convolution1D(input_dim=length,nb_filter=nb_filter, filter_length=filter_length,border_mode="valid",activation="relu",subsample_length=1))
+    # model.add(LSTM(length*2, dropout_W=0.5, dropout_U=0.1))
+    # model.add(Dropout(0.3))
+    model.add(MaxPooling1D(pool_length=2))
+    model.add(Flatten())
     model.add(Dense(200))
     model.add(PReLU())
     model.add(Dropout(0.5))
@@ -89,7 +96,7 @@ def embedding_methods(train_features,test_features,train_y,train,test):
     model.add(Activation('softmax'))
     model.compile(loss='categorical_crossentropy', optimizer='sgd',metrics=['accuracy'])
 
-    model.fit(train_features,train_y,batch_size=128,nb_epoch=5,validation_split=0.3)
+    model.fit(train_features,train_y,batch_size=128,nb_epoch=15,validation_split=0.3)
 
     ans=model.predict(test_features,batch_size=128)
 
@@ -118,8 +125,6 @@ def build_vocab():
 
     print(word2index['a'],index2word[5])
     ifile.close()
-
-
 
 def read_files():
     if IS_SAMPLE:

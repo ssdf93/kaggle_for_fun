@@ -27,7 +27,8 @@ from keras.layers.advanced_activations import PReLU
 
 
 sample = False
-target='OutcomeType'
+target='count'
+imax=0
 
 
 def load_data():
@@ -67,42 +68,44 @@ def get_date(st,date_type):
 
 def get_period(x):
     if x>=7 and x<12:
-        return "Morning"
+        return "1"
     elif x>=12 and x<15:
-        return "Noon"
+        return "2"
     elif x>15 and x<20:
-        return "AfterNoon"
+        return "3"
     elif x>=20 and x<24:
-        return "Night"
+        return "4"
     else:
-        return "MidNight"
+        return "0"
 
 
 def data_processing(train,test):
-    features=['Color','SexuponOutcome','AnimalType','Breed']
+    features=['season','holiday','workingday','weather','temp','atemp','humidity','windspeed']
     for data in [train,test]:
-        data['AgeuponOutcome']=data['AgeuponOutcome'].fillna('Unknown')
-        data['BirthAge']=data['AgeuponOutcome'].apply(lambda x: birthAge(x))
-        data['Month']=data['DateTime'].apply(lambda x: get_date(x,'month'))
-        data['Year']=data['DateTime'].apply(lambda x: get_date(x,'year'))
-        data['Hour']=data['DateTime'].apply(lambda x: get_date(x,'hour'))
-        data['Day']=data['DateTime'].apply(lambda x: get_date(x,'day'))
-        data['Period']=data['Hour'].apply(lambda x: get_period(x))
+        data['month']=data['datetime'].apply(lambda x: get_date(x,'month'))
+        data['year']=data['datetime'].apply(lambda x: get_date(x,'year'))
+        data['hour']=data['datetime'].apply(lambda x: get_date(x,'hour'))
+        data['day']=data['datetime'].apply(lambda x: get_date(x,'day'))
+        data['period']=data['hour'].apply(lambda x: get_period(x))
 
 
-    features+=['BirthAge','Year','Month','Day','Hour','Period']
+    features+=['year','month','day','hour','period']
 
-    print("Label Encoder",time.ctime())
-    le=LabelEncoder()
-    for col in features:
-        train[col]=train[col].fillna('Unknown')
-        test[col]=test[col].fillna('Unknown')
-        le.fit(list(train[col])+list(test[col]))
-        train[col]=le.transform(train[col])
-        test[col]=le.transform(test[col])
+    # print("Label Encoder",time.ctime())
+    # le=LabelEncoder()
+    # for col in features:
+    #     train[col]=train[col].fillna('Unknown')
+    #     test[col]=test[col].fillna('Unknown')
+    #     le.fit(list(train[col])+list(test[col]))
+    #     train[col]=le.transform(train[col])
+    #     test[col]=le.transform(test[col])
 
-    le.fit(list(train[target]))
-    train[target]=le.transform(train[target])
+    # le.fit(list(train[target]))
+    # train[target]=le.transform(train[target])
+
+    global imax
+    imax=np.max(train[target])
+    train[target]=train[target]/imax
 
     print("Standard Scalaer",time.ctime())
     scaler=StandardScaler()
@@ -132,7 +135,8 @@ def write_csv(file_name,ans,first_row=None,myId=None):
 
         for i in range(ansSize):
             # import pdb;pdb.set_trace()
-            predictions += [[myId[i]+1]+ans[i].tolist()]
+            total_cnt=[int(i+0.5) for i in ans[i].tolist() ]
+            predictions += [[myId[i]]+total_cnt]
             if (i+1)%50000==0:
                 writer.writerows(predictions)
                 predictions=[]
@@ -164,39 +168,40 @@ def neural_networks(train,test,features):
     model.add(PReLU())
     model.add(Dropout(0.5))
     model.add(Dense(output_dim=100,init='glorot_uniform'))
-    model.add(PReLU())
+    model.add(Activation('sigmoid'))
     model.add(Dropout(0.5))
 
     model.add(Dense(output_dim=200,init='glorot_uniform'))
-    model.add(PReLU())
+    model.add(Activation('tanh'))
     model.add(Dropout(0.5))
 
     model.add(Dense(output_dim=100,init='glorot_uniform'))
     model.add(PReLU())
     model.add(Dropout(0.5))
 
+    model.add(Dense(1))
+    model.add(Activation('hard_sigmoid'))
 
-    model.add(Dense(5))
-    model.add(Activation('softmax'))
+    model.compile(loss='mean_squared_logarithmic_error', optimizer='sgd')
 
-    model.compile(loss='categorical_crossentropy', optimizer='adam',metrics=["accuracy"])
-
-    y_train=np_utils.to_categorical(train[target].values)
+    y_train=train[target].values
 
     model.fit(train[features].values,y_train,batch_size=16, nb_epoch=30, verbose=1,  validation_split=0.3)
 
 
     print("Start Predicting",time.ctime())
 
-    ans = model.predict_proba(test[features].values, verbose=0)
+    ans = model.predict_proba(test[features].values, verbose=0)*imax
 
-    first_row="ID,Adoption,Died,Euthanasia,Return_to_owner,Transfer".split(',')
-    myId=list(range(ans.shape[0]))
+    first_row="datetime,count".split(',')
+    myId=train['datetime'].values
     write_csv('results/nn-feature-submit.csv',ans,first_row,myId)
 
 
 
 if __name__ == '__main__':
     train,test=load_data()
+    print(test.head())
     train,test,features=data_processing(train,test)
+    print(test.head())
     neural_networks(train,test,features)

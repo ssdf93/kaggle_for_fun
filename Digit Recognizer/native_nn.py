@@ -42,7 +42,7 @@ def NN_model(input_dim,output_dim,hn,dp):
     model.add(Dense(output_dim))
     model.add(Activation('softmax'))
 
-    model.compile(loss='categorical_crossentropy', optimizer='adam')
+    model.compile(loss='categorical_crossentropy', optimizer='adam',metrics=["accuracy"])
     return model
 
 def run_algorithm(train,test):
@@ -56,7 +56,7 @@ def run_algorithm(train,test):
 
     y_train=np_utils.to_categorical(train[target].values)
 
-    model.fit(X_train,y_train, nb_epoch=EPOCHS, batch_size=BATCHES,show_accuracy=True,shuffle=True,verbose=1,validation_split=0.2)
+    model.fit(X_train,y_train, nb_epoch=EPOCHS, batch_size=BATCHES,shuffle=True,verbose=1,validation_split=0.2)
     X_test=test.values
     ans_m=X_test.shape[0]
     print("xtest=",X_test.shape)
@@ -66,7 +66,7 @@ def run_algorithm(train,test):
     # ans = np.array(ans).reshape((ans_m,))
 
     print("ans.shape=",ans.shape)
-    csvfile = 'result/keras-naive.csv'
+    csvfile = 'results/keras-naive.csv'
     writer = csv.writer(open(csvfile,'w'), lineterminator='\n')
     writer.writerow(["ImageId,Label"])
     for i,x in enumerate(ans):

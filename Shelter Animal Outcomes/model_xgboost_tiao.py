@@ -17,14 +17,6 @@ warnings.filterwarnings("ignore")
 
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 
-from keras.layers.advanced_activations import PReLU
-from keras.layers.core import Dense, Dropout, Activation
-from keras.layers.normalization import BatchNormalization
-from keras.models import Sequential
-from keras.utils import np_utils
-from keras.layers.advanced_activations import PReLU
-
-
 
 sample = False
 target='OutcomeType'
@@ -155,48 +147,36 @@ def write_csv(file_name,ans,first_row=None,myId=None):
 
 
 
-def neural_networks(train,test,features):
+def XG_boost(train,test,features):
+    # params = {'max_depth':8, 'eta':0.05,'silent':1,
+    #           'objective':'multi:softprob', 'num_class':5, 'eval_metric':'mlogloss',
+    #           'min_child_weight':3, 'subsample':0.6,'colsample_bytree':0.6, 'nthread':4}
+    # num_rounds = 250
 
-    input_dim=len(features)
+    params = {'max_depth':7, 'eta':0.02,'silent':1,
+              'objective':'multi:softprob', 'num_class':5, 'eval_metric':'mlogloss',
+              'min_child_weight':3, 'subsample':0.7,'colsample_bytree':0.7, 'nthread':8}
+    num_rounds = 700
 
-    model = Sequential()
-    model.add(Dense(output_dim=200,input_dim=input_dim,init='glorot_uniform'))
-    model.add(PReLU())
-    model.add(Dropout(0.5))
-    model.add(Dense(output_dim=100,init='glorot_uniform'))
-    model.add(PReLU())
-    model.add(Dropout(0.5))
+    xgbtrain = xgb.DMatrix(train[features], label=train[target])
+    dtest=xgb.DMatrix(test[features])
+    print("Start Cross Validation",time.ctime())
+    cv_results=xgb.cv(params, xgbtrain, num_rounds, nfold=5,metrics={'mlogloss'}, seed = 0)
+    print(cv_results)
+    cv_results.to_csv('results/xgboost_epoch.csv')
+    print("Start Training",time.ctime())
 
-    model.add(Dense(output_dim=200,init='glorot_uniform'))
-    model.add(PReLU())
-    model.add(Dropout(0.5))
-
-    model.add(Dense(output_dim=100,init='glorot_uniform'))
-    model.add(PReLU())
-    model.add(Dropout(0.5))
-
-
-    model.add(Dense(5))
-    model.add(Activation('softmax'))
-
-    model.compile(loss='categorical_crossentropy', optimizer='adam',metrics=["accuracy"])
-
-    y_train=np_utils.to_categorical(train[target].values)
-
-    model.fit(train[features].values,y_train,batch_size=16, nb_epoch=30, verbose=1,  validation_split=0.3)
-
-
+    classifier = xgb.train(params, xgbtrain, num_rounds)
     print("Start Predicting",time.ctime())
 
-    ans = model.predict_proba(test[features].values, verbose=0)
-
+    ans=classifier.predict(dtest)
     first_row="ID,Adoption,Died,Euthanasia,Return_to_owner,Transfer".split(',')
     myId=list(range(ans.shape[0]))
-    write_csv('results/nn-feature-submit.csv',ans,first_row,myId)
+    write_csv('results/xgboost-feature-submit.csv',ans,first_row,myId)
 
 
 
 if __name__ == '__main__':
     train,test=load_data()
     train,test,features=data_processing(train,test)
-    neural_networks(train,test,features)
+    XG_boost(train,test,features)

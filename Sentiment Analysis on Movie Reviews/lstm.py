@@ -17,7 +17,7 @@ from keras.models import Sequential
 from keras.layers.core import Dense, Dropout, Activation
 from keras.layers.embeddings import Embedding
 from keras.layers.advanced_activations import PReLU
-from keras.layers.recurrent import LSTM
+from keras.layers.recurrent import LSTM,GRU
 
 
 IS_SAMPLE=False
@@ -80,7 +80,7 @@ def embedding_methods(train_features,test_features,train_y,train,test):
     model = Sequential()
     print(dicSize,length,embedding.shape)
     model.add(Embedding(dicSize, length, dropout=0.5,input_length=maxlen,mask_zero=True,weights=[embedding]))
-    model.add(LSTM(length*2, dropout_W=0.5, dropout_U=0.1))
+    model.add(GRU(length*2,return_sequences=True, dropout_W=0.5, dropout_U=0.1))
     model.add(Dropout(0.3))
     model.add(LSTM(length, dropout_W=0.5, dropout_U=0.1))
     model.add(Dropout(0.3))
@@ -91,7 +91,7 @@ def embedding_methods(train_features,test_features,train_y,train,test):
     model.add(Activation('softmax'))
     model.compile(loss='categorical_crossentropy', optimizer='sgd',metrics=['accuracy'])
 
-    model.fit(train_features,train_y,batch_size=128,nb_epoch=5,validation_split=0.3)
+    model.fit(train_features,train_y,batch_size=128,nb_epoch=3,validation_split=0.3)
 
     ans=model.predict(test_features,batch_size=128)
 

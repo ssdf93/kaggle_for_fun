@@ -17,28 +17,25 @@ warnings.filterwarnings("ignore")
 
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 
-from keras.layers.advanced_activations import PReLU
-from keras.layers.core import Dense, Dropout, Activation
-from keras.layers.normalization import BatchNormalization
-from keras.models import Sequential
-from keras.utils import np_utils
-from keras.layers.advanced_activations import PReLU
-
+# import matplotlib.pyplot as plt
 
 
 sample = False
-target='OutcomeType'
+target='shot_made_flag'
 
 
 def load_data():
     if sample:
-        train = pd.read_csv("./data/train_min.csv")
-        test = pd.read_csv("./data/test_min.csv")
+        data = pd.read_csv("./data/data_min.csv")
     else:
-        train = pd.read_csv("./data/train.csv")
-        test = pd.read_csv("./data/test.csv")
+        data = pd.read_csv("./data/data.csv")
 
-    return train,test
+    print(data.describe())
+
+    train=data[data[target].notnull()]
+    test=data[data[target].isnull()]
+
+    return data,train,test
 
 def birthAge(x):
     sts=x.split(' ')
@@ -79,18 +76,15 @@ def get_period(x):
 
 
 def data_processing(train,test):
-    features=['Color','SexuponOutcome','AnimalType','Breed']
+    features=['combined_shot_type','shot_zone_area','shot_zone_basic','action_type','shot_type','opponent']
     for data in [train,test]:
-        data['AgeuponOutcome']=data['AgeuponOutcome'].fillna('Unknown')
-        data['BirthAge']=data['AgeuponOutcome'].apply(lambda x: birthAge(x))
-        data['Month']=data['DateTime'].apply(lambda x: get_date(x,'month'))
-        data['Year']=data['DateTime'].apply(lambda x: get_date(x,'year'))
-        data['Hour']=data['DateTime'].apply(lambda x: get_date(x,'hour'))
-        data['Day']=data['DateTime'].apply(lambda x: get_date(x,'day'))
-        data['Period']=data['Hour'].apply(lambda x: get_period(x))
+        data['month']=data['game_date'].apply(lambda x: get_date(x,'month'))
+        data['year']=data['game_date'].apply(lambda x: get_date(x,'year'))
+        data['day']=data['game_date'].apply(lambda x: get_date(x,'day'))
+        data['range']=data['shot_zone_range'].map({'16-24 ft.':20, '8-16 ft.':12, 'Less Than 8 ft.':4, '24+ ft.':28, 'Back Court Shot':36})
 
 
-    features+=['BirthAge','Year','Month','Day','Hour','Period']
+
 
     print("Label Encoder",time.ctime())
     le=LabelEncoder()
@@ -101,8 +95,10 @@ def data_processing(train,test):
         train[col]=le.transform(train[col])
         test[col]=le.transform(test[col])
 
-    le.fit(list(train[target]))
-    train[target]=le.transform(train[target])
+
+    features+=['loc_x','loc_y','period','minutes_remaining','seconds_remaining','shot_distance','month','year','day','range']
+    # le.fit(list(train[target]))
+    # train[target]=le.transform(train[target])
 
     print("Standard Scalaer",time.ctime())
     scaler=StandardScaler()
@@ -111,7 +107,6 @@ def data_processing(train,test):
         train[col]=scaler.transform(train[col])
         test[col]=scaler.transform(test[col])
 
-    # print(data['birthAge'][:10])
 
 
     return train,test,features
@@ -132,7 +127,7 @@ def write_csv(file_name,ans,first_row=None,myId=None):
 
         for i in range(ansSize):
             # import pdb;pdb.set_trace()
-            predictions += [[myId[i]+1]+ans[i].tolist()]
+            predictions += [[myId[i],ans[i]]]
             if (i+1)%50000==0:
                 writer.writerows(predictions)
                 predictions=[]
@@ -155,48 +150,45 @@ def write_csv(file_name,ans,first_row=None,myId=None):
 
 
 
-def neural_networks(train,test,features):
+def XG_boost(train,test,features):
+    params = {'max_depth':8, 'eta':0.05,'silent':1,
+              'objective':'binary:logistic', 'eval_metric': 'logloss',
+              'min_child_weight':3, 'subsample':0.6,'colsample_bytree':0.6, 'nthread':4}
+    num_rounds = 78
 
-    input_dim=len(features)
+    xgbtrain = xgb.DMatrix(train[features], label=train[target])
+    dtest=xgb.DMatrix(test[features])
+    print("Start Cross Validation",time.ctime())
+    cv_results=xgb.cv(params, xgbtrain, num_rounds, nfold=5,metrics={'logloss'}, seed = 0)
+    print(cv_results)
+    cv_results.to_csv('models/haha.csv')
+    print("Start Training",time.ctime())
 
-    model = Sequential()
-    model.add(Dense(output_dim=200,input_dim=input_dim,init='glorot_uniform'))
-    model.add(PReLU())
-    model.add(Dropout(0.5))
-    model.add(Dense(output_dim=100,init='glorot_uniform'))
-    model.add(PReLU())
-    model.add(Dropout(0.5))
-
-    model.add(Dense(output_dim=200,init='glorot_uniform'))
-    model.add(PReLU())
-    model.add(Dropout(0.5))
-
-    model.add(Dense(output_dim=100,init='glorot_uniform'))
-    model.add(PReLU())
-    model.add(Dropout(0.5))
-
-
-    model.add(Dense(5))
-    model.add(Activation('softmax'))
-
-    model.compile(loss='categorical_crossentropy', optimizer='adam',metrics=["accuracy"])
-
-    y_train=np_utils.to_categorical(train[target].values)
-
-    model.fit(train[features].values,y_train,batch_size=16, nb_epoch=30, verbose=1,  validation_split=0.3)
-
-
+    classifier = xgb.train(params, xgbtrain, num_rounds)
     print("Start Predicting",time.ctime())
 
-    ans = model.predict_proba(test[features].values, verbose=0)
+    ans=classifier.predict(dtest)
+    print(ans)
+    first_row="shot_id,shot_made_flag".split(',')
+    myId=test['shot_id'].values
+    write_csv('results/xgboost-feature-submit.csv',ans,first_row,myId)
 
-    first_row="ID,Adoption,Died,Euthanasia,Return_to_owner,Transfer".split(',')
-    myId=list(range(ans.shape[0]))
-    write_csv('results/nn-feature-submit.csv',ans,first_row,myId)
 
+# def iplot(data):
+#     x=data['loc_x'].values
+#     y=data['loc_y'].values
+#     x1=x//30*30
+#     y1=y//30*30
+#     print(x1[:10])
+#     print(y.min(),y.max())
 
+#     # plt.scatter(x,y,c=color,s=scale,label=color,alpha=0.6,edgecolors='white')
+#     plt.plot(x1,y1,'ro',alpha=0.6)
+#     plt.show()
 
 if __name__ == '__main__':
-    train,test=load_data()
-    train,test,features=data_processing(train,test)
-    neural_networks(train,test,features)
+    data,train,test=load_data()
+    # iplot(data)
+    print(test.head())
+    # train,test,features=data_processing(train,test)
+    # XG_boost(train,test,features)
