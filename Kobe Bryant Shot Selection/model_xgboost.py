@@ -13,6 +13,7 @@ import time
 from sklearn.metrics import log_loss
 import operator
 import warnings
+import random
 warnings.filterwarnings("ignore")
 
 from sklearn.preprocessing import StandardScaler, LabelEncoder
@@ -30,25 +31,13 @@ def load_data():
     else:
         data = pd.read_csv("./data/data.csv")
 
-    print(data.describe())
+    print(data['shot_distance'].max())
 
     train=data[data[target].notnull()]
     test=data[data[target].isnull()]
 
     return data,train,test
 
-def birthAge(x):
-    sts=x.split(' ')
-    if 'day' in x:
-        return int(sts[0])
-    elif 'week' in x:
-        return int(sts[0])+10
-    elif 'month' in x:
-        return int(sts[0])+30
-    elif 'year' in x:
-        return int(sts[0])+50
-    else:
-        return 0
 
 def get_date(st,date_type):
     if date_type=='year':
@@ -82,21 +71,30 @@ def data_processing(train,test):
         data['year']=data['game_date'].apply(lambda x: get_date(x,'year'))
         data['day']=data['game_date'].apply(lambda x: get_date(x,'day'))
         data['range']=data['shot_zone_range'].map({'16-24 ft.':20, '8-16 ft.':12, 'Less Than 8 ft.':4, '24+ ft.':28, 'Back Court Shot':36})
+        data['first_action_type']=data['action_type'].apply(lambda x: x.split(' ')[0])
+        data['season']=data['season'].apply(lambda x: int(x.split('-')[1]))
+        data['is_slam']= data['action_type'].apply(lambda x: x.split(' ')[0]=='Slam')
+        data['is_driving']= data['action_type'].apply(lambda x: x.split(' ')[0]=='Driving')
+
+    print(train['first_action_type'].unique())
 
 
-
+    features+=['first_action_type']
 
     print("Label Encoder",time.ctime())
     le=LabelEncoder()
     for col in features:
-        train[col]=train[col].fillna('Unknown')
-        test[col]=test[col].fillna('Unknown')
-        le.fit(list(train[col])+list(test[col]))
+        # train[col]=train[col].fillna('Unknown')
+        # test[col]=test[col].fillna('Unknown')
+        ilist=list(train[col])+list(test[col])
+        ilist=list(set(ilist))
+        random.shuffle(ilist)
+        le.fit(ilist)
         train[col]=le.transform(train[col])
         test[col]=le.transform(test[col])
 
 
-    features+=['loc_x','loc_y','period','minutes_remaining','seconds_remaining','shot_distance','month','year','day','range']
+    features+=['loc_x','loc_y','period','minutes_remaining','seconds_remaining','shot_distance','month','year','day','range','season']
     # le.fit(list(train[target]))
     # train[target]=le.transform(train[target])
 
@@ -106,8 +104,6 @@ def data_processing(train,test):
         scaler.fit(list(train[col])+list(test[col]))
         train[col]=scaler.transform(train[col])
         test[col]=scaler.transform(test[col])
-
-
 
     return train,test,features
 
@@ -151,10 +147,20 @@ def write_csv(file_name,ans,first_row=None,myId=None):
 
 
 def XG_boost(train,test,features):
-    params = {'max_depth':8, 'eta':0.05,'silent':1,
+    # params = {'max_depth':8, 'eta':0.05,'silent':1,
+    #           'objective':'binary:logistic', 'eval_metric': 'logloss',
+    #           'min_child_weight':3, 'subsample':0.6,'colsample_bytree':0.6, 'nthread':4}
+
+
+    #0.60753
+    params = {'max_depth':10, 'eta':0.01,'silent':1,
               'objective':'binary:logistic', 'eval_metric': 'logloss',
-              'min_child_weight':3, 'subsample':0.6,'colsample_bytree':0.6, 'nthread':4}
-    num_rounds = 78
+              'min_child_weight':3, 'subsample':0.5,'colsample_bytree':0.5, 'nthread':4}
+
+
+
+
+    num_rounds = 423
 
     xgbtrain = xgb.DMatrix(train[features], label=train[target])
     dtest=xgb.DMatrix(test[features])
@@ -190,5 +196,5 @@ if __name__ == '__main__':
     data,train,test=load_data()
     # iplot(data)
     print(test.head())
-    # train,test,features=data_processing(train,test)
-    # XG_boost(train,test,features)
+    train,test,features=data_processing(train,test)
+    XG_boost(train,test,features)
